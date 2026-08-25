@@ -4,7 +4,12 @@
     "build": "next build",
     "dev": "next dev --turbopack",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "typeorm": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js -d typeorm.config.ts",
+    "migration:generate": "pnpm run typeorm migration:generate",
+    "migration:run": "pnpm run typeorm migration:run",
+    "migration:revert": "pnpm run typeorm migration:revert",
+    "seed": "ts-node -r tsconfig-paths/register app/lib/seed.ts"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
@@ -14,10 +19,12 @@
     "clsx": "^2.1.1",
     "next": "latest",
     "next-auth": "5.0.0-beta.32",
+    "pg": "^8.23.0",
     "postcss": "8.5.1",
     "postgres": "^3.4.6",
     "react": "latest",
     "react-dom": "latest",
+    "reflect-metadata": "^0.2.2",
     "tailwindcss": "3.4.17",
     "typescript": "5.7.3",
     "use-debounce": "^10.0.6",
@@ -26,9 +33,14 @@
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
     "@types/node": "22.10.7",
+    "@types/pg": "^8.23.1",
     "@types/react": "19.0.7",
     "@types/react-dom": "19.0.3",
+    "dotenv": "^17.4.2",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.3.1"
+    "eslint-config-next": "^16.3.1",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typeorm": "^1.1.0"
   }
 }
