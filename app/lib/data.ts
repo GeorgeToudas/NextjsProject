@@ -1,13 +1,16 @@
 import postgres from 'postgres';
+import { Invoice } from './entities/invoice.entity';
+import { Customer } from './entities/customer.entity';
+import { Revenue } from './entities/revenue.entity';
 import {
   CustomerField,
   CustomersTableType,
   InvoiceForm,
   InvoicesTable,
   LatestInvoiceRaw,
-  Revenue,
 } from './definitions';
 import { formatCurrency } from './utils';
+import { getDataSource } from './data-sourse';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -19,7 +22,10 @@ export async function fetchRevenue() {
     console.log('Fetching revenue data...');
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    const data = await sql<Revenue[]>`SELECT * FROM revenue`;
+    const ds = await getDataSource();
+    const data = await ds.getRepository(Revenue).find();
+
+    /*const data = await sql<Revenue[]>`SELECT * FROM revenue`;*/
 
     console.log('Data fetch completed after 3 seconds.');
 
@@ -32,18 +38,44 @@ export async function fetchRevenue() {
 
 export async function fetchLatestInvoices() {
   try {
-    const data = await sql<LatestInvoiceRaw[]>`
+    const ds=await getDataSource();
+    const rows= await ds
+      .getRepository(Invoice)
+      .createQueryBuilder('invoices')
+      .innerJoin('invoices.customer','customers')
+      .select([
+        'invoices.id',
+        'invoices.amount',
+        'customers.name',
+        'customers.imageUrl',
+        'customers.email',
+      ])
+      .orderBy('invoices.date','DESC')
+      .limit(5)
+      .getRawMany();
+      
+
+    
+    /*const data = await sql<LatestInvoiceRaw[]>`
       SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       ORDER BY invoices.date DESC
       LIMIT 5`;
+    */
+    const latestInvoices: LatestInvoiceRaw[]=rows.map((row)=>({
+      id: row.invoices_id,
+      amount: row.invoices_amount,
+      name: row.customers_name,
+      image_url: row.customers_image_url,
+      email: row.customers_email,
+    }))
 
-    const latestInvoices = data.map((invoice) => ({
+    return latestInvoices.map((invoice) => ({
       ...invoice,
       amount: formatCurrency(invoice.amount),
     }));
-    return latestInvoices;
+    
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch the latest invoices.');
@@ -55,6 +87,31 @@ export async function fetchCardData() {
     // You can probably combine these into a single SQL query
     // However, we are intentionally splitting them to demonstrate
     // how to initialize multiple queries in parallel with JS.
+    const ds =await getDataSource();
+    const invoiceRepo= ds.getRepository(Invoice);
+    const customerRepo=ds.getRepository(Customer);
+    
+    const invoiceCountPromise = invoiceRepo.count();
+    const customerCountPromise = customerRepo.count();
+    const invoiceStatusPromise=invoiceRepo
+      .createQueryBuilder('invoices')
+      .select(
+        'SUM(CASE WHEN invoices.status = :paid THEN invoices.amount ELSE 0 END)',
+        'paid',
+      )
+      .addSelect(
+        'SUM(CASE WHEN invoices.status = :pending THEN invoices.amount ELSE 0 END)',
+        'pending',
+      )
+      .setParameters({ paid: 'paid', pending: 'pending' })
+      .getRawOne();
+
+    const [numberOfInvoices, numberOfCustomers, status] = await Promise.all([
+      invoiceCountPromise,
+      customerCountPromise,
+      invoiceStatusPromise,
+    ]);
+    /*
     const invoiceCountPromise = sql`SELECT COUNT(*) FROM invoices`;
     const customerCountPromise = sql`SELECT COUNT(*) FROM customers`;
     const invoiceStatusPromise = sql`SELECT
@@ -66,13 +123,16 @@ export async function fetchCardData() {
       invoiceCountPromise,
       customerCountPromise,
       invoiceStatusPromise,
-    ]);
-
+    ]);*/
+    const totalPaidInvoices = formatCurrency(status.paid ?? '0');
+    const totalPendingInvoices = formatCurrency(status.pending ?? '0');
+    
+    /*
     const numberOfInvoices = Number(data[0][0].count ?? '0');
     const numberOfCustomers = Number(data[1][0].count ?? '0');
     const totalPaidInvoices = formatCurrency(data[2][0].paid ?? '0');
     const totalPendingInvoices = formatCurrency(data[2][0].pending ?? '0');
-
+    */
     return {
       numberOfCustomers,
       numberOfInvoices,
@@ -86,14 +146,56 @@ export async function fetchCardData() {
 }
 
 const ITEMS_PER_PAGE = 6;
+
+
 export async function fetchFilteredInvoices(
   query: string,
   currentPage: number,
 ) {
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+  const searchTerm = `%${query}%`;
 
   try {
-    const invoices = await sql<InvoicesTable[]>`
+    const ds = await getDataSource();
+    const rows = await ds
+      .getRepository(Invoice)
+      .createQueryBuilder('invoices')
+      .innerJoin('invoices.customer', 'customers')
+      .select([
+        'invoices.id',
+        'invoices.customerId',
+        'invoices.amount',
+        'invoices.date',
+        'invoices.status',
+        'customers.name',
+        'customers.email',
+        'customers.imageUrl',
+      ])
+      .where('customers.name ILIKE :search', { search: searchTerm })
+      .orWhere('customers.email ILIKE :search', { search: searchTerm })
+      .orWhere('CAST(invoices.amount AS TEXT) ILIKE :search', {
+        search: searchTerm,
+      })
+      .orWhere('CAST(invoices.date AS TEXT) ILIKE :search', {
+        search: searchTerm,
+      })
+      .orWhere('invoices.status ILIKE :search', { search: searchTerm })
+      .orderBy('invoices.date', 'DESC')
+      .limit(ITEMS_PER_PAGE)
+      .offset(offset)
+      .getRawMany();
+
+    const invoices: InvoicesTable[] = rows.map((row) => ({
+      id: row.invoices_id,
+      customer_id: row.invoices_customer_id,
+      amount: row.invoices_amount,
+      date: row.invoices_date,
+      status: row.invoices_status,
+      name: row.customers_name,
+      email: row.customers_email,
+      image_url: row.customers_image_url,
+    }));
+    /*const invoices = await sql<InvoicesTable[]>`
       SELECT
         invoices.id,
         invoices.amount,
@@ -112,7 +214,7 @@ export async function fetchFilteredInvoices(
         invoices.status ILIKE ${`%${query}%`}
       ORDER BY invoices.date DESC
       LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
-    `;
+    `;*/
 
     return invoices;
   } catch (error) {
@@ -122,8 +224,27 @@ export async function fetchFilteredInvoices(
 }
 
 export async function fetchInvoicesPages(query: string) {
+  const searchTerm = `%${query}%`;
   try {
-    const data = await sql`SELECT COUNT(*)
+    const ds = await getDataSource();
+    const count = await ds
+      .getRepository(Invoice)
+      .createQueryBuilder('invoices')
+      .innerJoin('invoices.customer', 'customers')
+      .where('customers.name ILIKE :search', { search: searchTerm })
+      .orWhere('customers.email ILIKE :search', { search: searchTerm })
+      .orWhere('CAST(invoices.amount AS TEXT) ILIKE :search', {
+        search: searchTerm,
+      })
+      .orWhere('CAST(invoices.date AS TEXT) ILIKE :search', {
+        search: searchTerm,
+      })
+      .orWhere('invoices.status ILIKE :search', { search: searchTerm })
+      .getCount();
+
+    return Math.ceil(count / ITEMS_PER_PAGE);
+    
+    /*const data = await sql`SELECT COUNT(*)
     FROM invoices
     JOIN customers ON invoices.customer_id = customers.id
     WHERE
@@ -135,7 +256,7 @@ export async function fetchInvoicesPages(query: string) {
   `;
 
     const totalPages = Math.ceil(Number(data[0].count) / ITEMS_PER_PAGE);
-    return totalPages;
+    return totalPages;*/
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch total number of invoices.');
