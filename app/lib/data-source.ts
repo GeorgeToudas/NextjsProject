@@ -45,7 +45,11 @@ export async function getDataSource(): Promise<DataSource> {
 
   // Guard against concurrent requests both trying to initialize at once
   if (!globalThis.__typeorm_initPromise) {
-    globalThis.__typeorm_initPromise = dataSource.initialize();
+    globalThis.__typeorm_initPromise = dataSource.initialize().catch((error) => {
+      // Don't cache a failed attempt — let the next call retry from scratch
+      globalThis.__typeorm_initPromise = undefined;
+      throw error;
+    });
   }
 
   await globalThis.__typeorm_initPromise;
