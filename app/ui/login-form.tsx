@@ -1,4 +1,6 @@
 'use client';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { lusitana } from '@/app/ui/fonts';
 import {
   AtSymbolIcon,
@@ -8,12 +10,43 @@ import {
 import { ArrowRightIcon } from '@heroicons/react/20/solid';
 import { Button } from './button';
 
-
 export default function LoginForm() {
-  
-  
+  const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (loading) return;
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error ?? 'Something went wrong');
+        setLoading(false);
+        return;
+      }
+
+      router.push('/dashboard');
+    } catch {
+      setError('Something went wrong');
+      setLoading(false);
+    }
+  }
+
   return (
-    <form className="space-y-3">
+    <form onSubmit={handleSubmit} className="space-y-3">
       <div className="flex-1 rounded-lg bg-gray-50 px-6 pb-4 pt-8">
         <h1 className={`${lusitana.className} mb-3 text-2xl`}>
           Please log in to continue.
@@ -33,6 +66,8 @@ export default function LoginForm() {
                 type="email"
                 name="email"
                 placeholder="Enter your email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
               />
               <AtSymbolIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-gray-500 peer-focus:text-gray-900" />
@@ -52,6 +87,8 @@ export default function LoginForm() {
                 type="password"
                 name="password"
                 placeholder="Enter password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
               />
@@ -59,11 +96,21 @@ export default function LoginForm() {
             </div>
           </div>
         </div>
+        <Button className="mt-4 w-full" aria-disabled={loading} disabled={loading}>
+          {loading ? 'Logging in...' : 'Log in'}{' '}
+          <ArrowRightIcon className="ml-auto h-5 w-5 text-gray-50" />
+        </Button>
         <div
           className="flex h-8 items-end space-x-1"
           aria-live="polite"
           aria-atomic="true"
         >
+          {error && (
+            <>
+              <ExclamationCircleIcon className="h-5 w-5 text-red-500" />
+              <p className="text-sm text-red-500">{error}</p>
+            </>
+          )}
         </div>
       </div>
     </form>

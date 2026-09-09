@@ -55,3 +55,18 @@ export async function getDataSource(): Promise<DataSource> {
   await globalThis.__typeorm_initPromise;
   return dataSource;
 }
+
+/**
+ * Next.js compiles Route Handlers and Server Components into separate
+ * module graphs ("layers"), so this file — and the entity classes it
+ * imports — gets a distinct instance per layer even though the cached
+ * DataSource (shared via globalThis) was built from just one of them.
+ * Passing an entity class straight to getRepository() breaks across
+ * layers because TypeORM matches class targets by exact reference.
+ * Looking the entity up by its name (a plain string) sidesteps that,
+ * since TypeORM also matches metadata by name.
+ */
+export async function getUserRepository() {
+  const ds = await getDataSource();
+  return ds.getRepository<User>('User');
+}
