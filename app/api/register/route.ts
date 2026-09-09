@@ -1,8 +1,7 @@
 import {NextRequest, NextResponse} from "next/server";
 import {z} from "zod";
 import bcrypt from "bcrypt";
-import {getDataSource} from "@/app/lib/data-source";
-import{User} from "@/app/lib/entities/user.entity";
+import {getUserRepository} from "@/app/lib/data-source";
 
 const registerSchema = z.object({
   name: z.string().min(1,'Name is required'),
@@ -24,8 +23,7 @@ export async function POST(request: NextRequest) {
 
     const { name, email, password } = result.data;
 
-    const ds = await getDataSource();
-    const userRepo = ds.getRepository(User);
+    const userRepo = await getUserRepository();
 
     const existingUser = await userRepo.findOne({ where: { email } });
     if (existingUser) {
